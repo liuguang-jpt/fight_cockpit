@@ -1,0 +1,101 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "build test",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/test.c",
+                "${workspaceFolder}/src/Util/SDL_Util.c",
+                "-o",
+                "${workspaceFolder}/build/test.exe",
+                "-I${workspaceFolder}/src",
+                "-ID:\\gcc\\msys64\\mingw64\\include",
+                "-LD:\\gcc\\msys64\\mingw64\\lib",
+                "-lmingw32",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_gfx",
+                "-lSDL2_ttf",
+                "-lSDL2_image",
+                "-lws2_32"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "编译src/test.c + src/Util/SDL_Util.c，链接SDL2系列库生成test.exe"
+        },
+        {
+            "type": "shell",
+            "label": "run test",
+            "command": "${workspaceFolder}/build/test.exe",
+            "dependsOn": [
+                "build test"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "detail": "运行test程序",
+            "problemMatcher": []
+        },
+        {
+            "type": "shell",
+            "label": "build SDL_Util",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-c",
+                "-g",
+                "-fdiagnostics-color=always",
+                "${workspaceFolder}/src/Util/SDL_Util.c",
+                "-o",
+                "${workspaceFolder}/build/SDL_Util.o",
+                "-I${workspaceFolder}/src",
+                "-ID:\\gcc\\msys64\\mingw64\\include",
+                "-ID:\\gcc\\msys64\\mingw64\\include\\SDL2",
+                "-I${workspaceFolder}/src/Util"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "编译SDL_Util.c为目标文件(.o)，不链接"
+        },
+        {
+            "type": "cppbuild",
+            "label": "C/C++: gcc.exe 生成活动文件",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-fdiagnostics-color=always",
+                "-g",
+                "${file}",
+                "-o",
+                "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                "-I",
+                "D:/gcc/msys64/mingw64/include",
+                "-I",
+                "D:/gcc/msys64/mingw64/include/SDL2"
+            ],
+            "options": {
+                "cwd": "D:/gcc/msys64/mingw64/bin"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "调试器生成的任务。"
+        }
+    ]
+}
