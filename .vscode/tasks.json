@@ -2,17 +2,23 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "type": "shell",
-            "label": "build test",
+            "detail": "编译PFD主程序（pfd_main.c + pfd_ui.c），链接SDL2全套库生成pfd.exe",
+            "label": "build pfd",
+            "problemMatcher": [
+                "$gcc"
+            ],
             "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "type": "shell",
             "args": [
                 "-g",
-                "${workspaceFolder}/src/test.c",
-                "${workspaceFolder}/src/Util/SDL_Util.c",
+                "${workspaceFolder}/src/PFD/pfd_main.c",
+                "${workspaceFolder}/src/PFD/pfd_ui.c",
                 "-o",
-                "${workspaceFolder}/build/test.exe",
+                "${workspaceFolder}/build/pfd.exe",
                 "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/PFD",
                 "-ID:\\gcc\\msys64\\mingw64\\include",
+                "-ID:\\gcc\\msys64\\mingw64\\include\\SDL2",
                 "-LD:\\gcc\\msys64\\mingw64\\lib",
                 "-lmingw32",
                 "-lSDL2main",
@@ -25,50 +31,21 @@
             "group": {
                 "kind": "build",
                 "isDefault": false
-            },
-            "problemMatcher": [
-                "$gcc"
-            ],
-            "detail": "编译src/test.c + src/Util/SDL_Util.c，链接SDL2系列库生成test.exe"
+            }
         },
         {
-            "type": "shell",
-            "label": "run test",
-            "command": "${workspaceFolder}/build/test.exe",
+            "detail": "运行PFD程序",
+            "label": "run pfd",
             "dependsOn": [
-                "build test"
+                "build pfd"
             ],
+            "command": "${workspaceFolder}/build/pfd.exe",
+            "type": "shell",
+            "problemMatcher": [],
             "group": {
                 "kind": "test",
-                "isDefault": true
-            },
-            "detail": "运行test程序",
-            "problemMatcher": []
-        },
-        {
-            "type": "shell",
-            "label": "build SDL_Util",
-            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
-            "args": [
-                "-c",
-                "-g",
-                "-fdiagnostics-color=always",
-                "${workspaceFolder}/src/Util/SDL_Util.c",
-                "-o",
-                "${workspaceFolder}/build/SDL_Util.o",
-                "-I${workspaceFolder}/src",
-                "-ID:\\gcc\\msys64\\mingw64\\include",
-                "-ID:\\gcc\\msys64\\mingw64\\include\\SDL2",
-                "-I${workspaceFolder}/src/Util"
-            ],
-            "group": {
-                "kind": "build",
                 "isDefault": false
-            },
-            "problemMatcher": [
-                "$gcc"
-            ],
-            "detail": "编译SDL_Util.c为目标文件(.o)，不链接"
+            }
         },
         {
             "type": "cppbuild",
