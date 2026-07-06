@@ -221,6 +221,51 @@
                 "kind": "test",
                 "isDefault": false
             }
+        },
+        {
+            "label": "build cockpit",
+            "type": "shell",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/MAP/map_main.c",
+                "-o",
+                "${workspaceFolder}/build/cockpit.exe",
+                "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/MAP",
+                "-ID:/gcc/msys64/mingw64/include",
+                "-ID:/gcc/msys64/mingw64/include/SDL2",
+                "-LD:/gcc/msys64/mingw64/lib",
+                "-lmingw32",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_ttf",
+                "-lSDL2_image",
+                "-luser32",
+                "-lgdi32",
+                "-lm"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "run cockpit",
+            "type": "shell",
+            "dependsOn": [
+                "build pfd",
+                "build nd",
+                "build eicas1",
+                "build eicas2",
+                "build fmc",
+                "build cockpit"
+            ],
+            "command": "${workspaceFolder}/build/cockpit.exe",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
         }
     ]
 }
