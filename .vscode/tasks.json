@@ -48,6 +48,50 @@
                 "kind": "test",
                 "isDefault": false
             }
+        },
+        {
+            "label": "build nd",
+            "type": "shell",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/ND/nd_main.c",
+                "${workspaceFolder}/src/ND/nd_ui.c",
+                "${workspaceFolder}/src/ND/nd_data.c",
+                "${workspaceFolder}/src/Util/xplaneConnect.c",
+                "-o",
+                "${workspaceFolder}/build/nd.exe",
+                "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/ND",
+                "-I${workspaceFolder}/src/Util",
+                "-ID:/gcc/msys64/mingw64/include",
+                "-ID:/gcc/msys64/mingw64/include/SDL2",
+                "-LD:/gcc/msys64/mingw64/lib",
+                "-lmingw32",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_gfx",
+                "-lSDL2_ttf",
+                "-lSDL2_image",
+                "-lws2_32",
+                "-lm"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "run nd",
+            "type": "shell",
+            "dependsOn": [
+                "build nd"
+            ],
+            "command": "${workspaceFolder}/build/nd.exe",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
         }
     ]
 }
