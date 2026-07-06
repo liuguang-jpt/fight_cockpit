@@ -180,6 +180,47 @@
                 "kind": "test",
                 "isDefault": false
             }
+        },
+        {
+            "label": "build fmc",
+            "type": "shell",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/FMC/fmc_main.c",
+                "${workspaceFolder}/src/FMC/fmc_ui.c",
+                "${workspaceFolder}/src/FMC/fmc_data.c",
+                "-o",
+                "${workspaceFolder}/build/fmc.exe",
+                "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/FMC",
+                "-ID:/gcc/msys64/mingw64/include",
+                "-ID:/gcc/msys64/mingw64/include/SDL2",
+                "-LD:/gcc/msys64/mingw64/lib",
+                "-lmingw32",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_gfx",
+                "-lSDL2_ttf",
+                "-lSDL2_image",
+                "-lm"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "run fmc",
+            "type": "shell",
+            "dependsOn": [
+                "build fmc"
+            ],
+            "command": "${workspaceFolder}/build/fmc.exe",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
         }
     ]
 }
