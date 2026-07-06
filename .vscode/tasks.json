@@ -92,6 +92,94 @@
                 "kind": "test",
                 "isDefault": false
             }
+        },
+        {
+            "label": "build eicas1",
+            "type": "shell",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/EICAS1/eicas1_main.c",
+                "${workspaceFolder}/src/EICAS1/eicas1_ui.c",
+                "${workspaceFolder}/src/EICAS1/eicas1_data.c",
+                "${workspaceFolder}/src/Util/xplaneConnect.c",
+                "-o",
+                "${workspaceFolder}/build/eicas1.exe",
+                "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/EICAS1",
+                "-I${workspaceFolder}/src/Util",
+                "-ID:/gcc/msys64/mingw64/include",
+                "-ID:/gcc/msys64/mingw64/include/SDL2",
+                "-LD:/gcc/msys64/mingw64/lib",
+                "-lmingw32",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_gfx",
+                "-lSDL2_ttf",
+                "-lSDL2_image",
+                "-lws2_32",
+                "-lm"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "run eicas1",
+            "type": "shell",
+            "dependsOn": [
+                "build eicas1"
+            ],
+            "command": "${workspaceFolder}/build/eicas1.exe",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "build eicas2",
+            "type": "shell",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/EICAS2/eicas2_main.c",
+                "${workspaceFolder}/src/EICAS2/eicas2_ui.c",
+                "${workspaceFolder}/src/EICAS2/eicas2_data.c",
+                "${workspaceFolder}/src/Util/xplaneConnect.c",
+                "-o",
+                "${workspaceFolder}/build/eicas2.exe",
+                "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/EICAS2",
+                "-I${workspaceFolder}/src/Util",
+                "-ID:/gcc/msys64/mingw64/include",
+                "-ID:/gcc/msys64/mingw64/include/SDL2",
+                "-LD:/gcc/msys64/mingw64/lib",
+                "-lmingw32",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_gfx",
+                "-lSDL2_ttf",
+                "-lSDL2_image",
+                "-lws2_32",
+                "-lm"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "run eicas2",
+            "type": "shell",
+            "dependsOn": [
+                "build eicas2"
+            ],
+            "command": "${workspaceFolder}/build/eicas2.exe",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
         }
     ]
 }
