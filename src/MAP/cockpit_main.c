@@ -2,8 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h>
 
+#include "../Util/xplaneConnect.h"
+#include <windows.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_syswm.h>
@@ -42,7 +43,10 @@ static SDL_Texture *g_fullscreen_icon = NULL;
 static SDL_Texture *g_window_icon = NULL;
 static TTF_Font *g_font16 = NULL;
 static TTF_Font *g_font22 = NULL;
+static TTF_Font *g_font28 = NULL;
 static HWND g_host_hwnd = NULL;
+static XPCSocket g_alarm_socket = {INVALID_SOCKET, 0, {0}};
+static SDL_AudioDeviceID g_audio_device = 0;
 static int g_window_width = 1600;
 static int g_window_height = 900;
 static int g_is_fullscreen = 1;
@@ -54,6 +58,22 @@ static float g_min_scale = 1.0f;
 static float g_max_scale = 1.0f;
 static float g_offset_x = 0.0f;
 static float g_offset_y = 0.0f;
+static volatile LONG g_audio_alarm_level = 0;
+
+typedef struct CockpitAlarmState {
+    int master_warning;
+    int master_caution;
+    int engine_fire;
+    int stall_warning;
+    int overspeed_warning;
+    int warning_active;
+    int caution_active;
+    int xplane_connected;
+    int audio_ready;
+    Uint32 last_poll_ticks;
+} CockpitAlarmState;
+
+static CockpitAlarmState g_alarm_state = {0};
 
 static CockpitModule g_modules[MODULE_COUNT] = {
     {"PFD", "PFD", "build\\pfd.exe", {1210, 905, 900, 910}, {77, 219, 255, 255}, {0}, NULL, 0, 0},
@@ -73,6 +93,16 @@ static SDL_Rect get_window_button_rect(void) {
     return rect;
 }
 
+static SDL_Rect get_alarm_warning_rect(void) {
+    SDL_Rect rect = {g_window_width / 2 - 204, 22, 184, 54};
+    return rect;
+}
+
+static SDL_Rect get_alarm_caution_rect(void) {
+    SDL_Rect rect = {g_window_width / 2 + 20, 22, 184, 54};
+    return rect;
+}
+
 static int point_in_rect(int x, int y, const SDL_Rect *rect) {
     if (rect == NULL) return 0;
     return x >= rect->x && x < rect->x + rect->w && y >= rect->y && y < rect->y + rect->h;
@@ -82,6 +112,68 @@ static float clamp_float(float value, float min_value, float max_value) {
     if (value < min_value) return min_value;
     if (value > max_value) return max_value;
     return value;
+}
+
+static unsigned short get_alarm_xplane_port_from_env(void) {
+    const char *port_text = getenv("COCKPIT_XPLANE_PORT");
+    long port = 0;
+
+    if (port_text == NULL || *port_text == '\0') return XPC_DEFAULT_PORT;
+    port = strtol(port_text, NULL, 10);
+    if (port <= 0 || port > 65535) return XPC_DEFAULT_PORT;
+    return (unsigned short)port;
+}
+
+static void audio_alarm_callback(void *userdata, Uint8 *stream, int len) {
+    float *samples = (float *)stream;
+    int sample_count = len / (int)sizeof(float);
+    static float phase = 0.0f;
+    static unsigned long sample_cursor = 0;
+    int level = (int)InterlockedCompareExchange(&g_audio_alarm_level, 0, 0);
+    float amplitude = 0.0f;
+    float frequency = 0.0f;
+    int i;
+
+    (void)userdata;
+    for (i = 0; i < sample_count; ++i) {
+        float gate = 0.0f;
+
+        if (level == 2) {
+            unsigned long cycle = sample_cursor % 10584UL;
+            amplitude = 0.18f;
+            frequency = 920.0f;
+            gate = cycle < 5292UL ? 1.0f : 0.0f;
+        } else if (level == 1) {
+            unsigned long cycle = sample_cursor % 44100UL;
+            amplitude = 0.12f;
+            frequency = 640.0f;
+            gate = cycle < 11025UL ? 1.0f : 0.0f;
+        }
+
+        if (gate > 0.0f) {
+            samples[i] = sinf(phase) * amplitude;
+            phase += 6.2831853f * frequency / 44100.0f;
+            if (phase > 6.2831853f) phase -= 6.2831853f;
+        } else {
+            samples[i] = 0.0f;
+        }
+        ++sample_cursor;
+    }
+}
+
+static void apply_alarm_demo_override(CockpitAlarmState *state) {
+    const char *demo = getenv("COCKPIT_ALARM_DEMO");
+
+    if (state == NULL || demo == NULL || *demo == '\0') return;
+    if (_stricmp(demo, "warning") == 0) {
+        state->master_warning = 1;
+        state->stall_warning = 1;
+    } else if (_stricmp(demo, "caution") == 0) {
+        state->master_caution = 1;
+    } else if (_stricmp(demo, "fire") == 0) {
+        state->master_warning = 1;
+        state->engine_fire = 1;
+    }
 }
 
 static void render_text(SDL_Renderer *renderer, TTF_Font *font, int x, int y, SDL_Color color, const char *text) {
@@ -106,6 +198,15 @@ static void render_text(SDL_Renderer *renderer, TTF_Font *font, int x, int y, SD
     SDL_FreeSurface(surface);
 }
 
+static void render_text_centered(SDL_Renderer *renderer, TTF_Font *font, const SDL_Rect *rect, int y_offset, SDL_Color color, const char *text) {
+    int text_w = 0;
+    int text_h = 0;
+
+    if (renderer == NULL || font == NULL || rect == NULL || text == NULL || *text == '\0') return;
+    if (TTF_SizeUTF8(font, text, &text_w, &text_h) == -1) return;
+    render_text(renderer, font, rect->x + (rect->w - text_w) / 2, rect->y + y_offset, color, text);
+}
+
 static SDL_Texture *load_texture(SDL_Renderer *renderer, const char *path) {
     SDL_Surface *surface = IMG_Load(path);
     SDL_Texture *texture = NULL;
@@ -114,6 +215,65 @@ static SDL_Texture *load_texture(SDL_Renderer *renderer, const char *path) {
     texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
     return texture;
+}
+
+static void update_alarm_from_xplane(void) {
+    float master_warning = 0.0f;
+    float master_caution = 0.0f;
+    float stall_warning = 0.0f;
+    float overspeed_warning = 0.0f;
+    float engine_fires[8] = {0.0f};
+    float *core_values[] = {&master_warning, &master_caution, &stall_warning, &overspeed_warning};
+    int core_sizes[] = {1, 1, 1, 1};
+    const char *core_drefs[] = {
+        "sim/cockpit/warnings/annunciators/master_warning",
+        "sim/cockpit/warnings/annunciators/master_caution",
+        "sim/cockpit2/annunciators/stall_warning",
+        "sim/cockpit2/annunciators/overspeed_warning"
+    };
+    float *fire_values[] = {engine_fires};
+    int fire_sizes[] = {8};
+    const char *fire_drefs[] = {"sim/cockpit2/annunciators/engine_fires"};
+    int i;
+
+    if (g_alarm_socket.sock == INVALID_SOCKET) return;
+    if (getDREFs(g_alarm_socket, core_drefs, core_values, 4, core_sizes) == 0) {
+        g_alarm_state.master_warning = master_warning > 0.5f;
+        g_alarm_state.master_caution = master_caution > 0.5f;
+        g_alarm_state.stall_warning = stall_warning > 0.5f;
+        g_alarm_state.overspeed_warning = overspeed_warning > 0.5f;
+        g_alarm_state.xplane_connected = 1;
+    } else {
+        g_alarm_state.master_warning = 0;
+        g_alarm_state.master_caution = 0;
+        g_alarm_state.stall_warning = 0;
+        g_alarm_state.overspeed_warning = 0;
+        g_alarm_state.engine_fire = 0;
+        g_alarm_state.xplane_connected = 0;
+        return;
+    }
+
+    g_alarm_state.engine_fire = 0;
+    if (getDREFs(g_alarm_socket, fire_drefs, fire_values, 1, fire_sizes) == 0) {
+        for (i = 0; i < fire_sizes[0]; ++i) {
+            if (engine_fires[i] > 0.5f) {
+                g_alarm_state.engine_fire = 1;
+                break;
+            }
+        }
+    }
+}
+
+static void update_alarm_state(void) {
+    Uint32 now = SDL_GetTicks();
+
+    if (now - g_alarm_state.last_poll_ticks < 250) return;
+    g_alarm_state.last_poll_ticks = now;
+    update_alarm_from_xplane();
+    apply_alarm_demo_override(&g_alarm_state);
+    g_alarm_state.warning_active = g_alarm_state.master_warning || g_alarm_state.engine_fire || g_alarm_state.stall_warning || g_alarm_state.overspeed_warning;
+    g_alarm_state.caution_active = g_alarm_state.master_caution;
+    InterlockedExchange(&g_audio_alarm_level, g_alarm_state.warning_active ? 2 : (g_alarm_state.caution_active ? 1 : 0));
 }
 
 /* The whole cockpit stays on one logical canvas, then zoom/pan projects it into the desktop window. */
@@ -181,13 +341,17 @@ static void toggle_fullscreen(int enable) {
 }
 
 static int init_cockpit(void) {
-    if (SDL_Init(SDL_INIT_VIDEO) == -1) return -1;
+    SDL_AudioSpec desired;
+    SDL_AudioSpec obtained;
+
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == -1) return -1;
     if (TTF_Init() == -1) return -1;
     if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) != IMG_INIT_PNG) return -1;
 
     g_font16 = TTF_OpenFont(COCKPIT_FONT_PATH, 16);
     g_font22 = TTF_OpenFont(COCKPIT_FONT_PATH, 22);
-    if (g_font16 == NULL || g_font22 == NULL) return -1;
+    g_font28 = TTF_OpenFont(COCKPIT_FONT_PATH, 28);
+    if (g_font16 == NULL || g_font22 == NULL || g_font28 == NULL) return -1;
 
     g_window = SDL_CreateWindow(
         "Cockpit Host",
@@ -206,6 +370,21 @@ static int init_cockpit(void) {
     g_fullscreen_icon = load_texture(g_renderer, COCKPIT_FULLSCREEN_ICON_PATH);
     g_window_icon = load_texture(g_renderer, COCKPIT_WINDOW_ICON_PATH);
     if (g_background == NULL || g_fullscreen_icon == NULL || g_window_icon == NULL) return -1;
+
+    memset(&desired, 0, sizeof(desired));
+    memset(&obtained, 0, sizeof(obtained));
+    desired.freq = 44100;
+    desired.format = AUDIO_F32SYS;
+    desired.channels = 1;
+    desired.samples = 1024;
+    desired.callback = audio_alarm_callback;
+    g_audio_device = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
+    if (g_audio_device != 0) {
+        SDL_PauseAudioDevice(g_audio_device, 0);
+        g_alarm_state.audio_ready = 1;
+    }
+
+    g_alarm_socket = openUDP(get_alarm_xplane_port_from_env());
 
     update_window_size();
     return 0;
@@ -230,10 +409,13 @@ static void destroy_cockpit(void) {
     if (g_background != NULL) SDL_DestroyTexture(g_background);
     if (g_fullscreen_icon != NULL) SDL_DestroyTexture(g_fullscreen_icon);
     if (g_window_icon != NULL) SDL_DestroyTexture(g_window_icon);
+    if (g_audio_device != 0) SDL_CloseAudioDevice(g_audio_device);
+    if (g_alarm_socket.sock != INVALID_SOCKET) closeUDP(g_alarm_socket);
     if (g_renderer != NULL) SDL_DestroyRenderer(g_renderer);
     if (g_window != NULL) SDL_DestroyWindow(g_window);
     if (g_font16 != NULL) TTF_CloseFont(g_font16);
     if (g_font22 != NULL) TTF_CloseFont(g_font22);
+    if (g_font28 != NULL) TTF_CloseFont(g_font28);
     TTF_Quit();
     IMG_Quit();
     SDL_Quit();
@@ -377,6 +559,41 @@ static void draw_controls(void) {
     SDL_RenderCopy(g_renderer, g_window_icon, NULL, &window_rect);
 }
 
+static void draw_alarm_box(const SDL_Rect *rect, const char *label, SDL_Color active_color, int active, int blink_period_ms) {
+    SDL_Color off_fill = {22, 26, 30, 220};
+    SDL_Color text_off = {110, 118, 128, 255};
+    int lit = active && ((SDL_GetTicks() / (Uint32)blink_period_ms) % 2 == 0);
+    SDL_Color fill = lit ? active_color : off_fill;
+    SDL_Color text = lit ? (SDL_Color){245, 245, 245, 255} : text_off;
+
+    SDL_SetRenderDrawBlendMode(g_renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(g_renderer, fill.r, fill.g, fill.b, lit ? 255 : fill.a);
+    SDL_RenderFillRect(g_renderer, rect);
+    SDL_SetRenderDrawColor(g_renderer, active_color.r, active_color.g, active_color.b, 255);
+    SDL_RenderDrawRect(g_renderer, rect);
+    render_text_centered(g_renderer, g_font28, rect, 8, text, label);
+}
+
+static void draw_alarm_panel(void) {
+    SDL_Rect warning_rect = get_alarm_warning_rect();
+    SDL_Rect caution_rect = get_alarm_caution_rect();
+    char status_line[128];
+
+    draw_alarm_box(&warning_rect, "WARNING", (SDL_Color){210, 38, 38, 255}, g_alarm_state.warning_active, 220);
+    draw_alarm_box(&caution_rect, "CAUTION", (SDL_Color){214, 164, 32, 255}, g_alarm_state.caution_active, 420);
+    snprintf(
+        status_line,
+        sizeof(status_line),
+        "ALARM %s  FIRE %s  STALL %s  OVERSPD %s  AUDIO %s",
+        g_alarm_state.xplane_connected ? "XPLANE" : "SIM",
+        g_alarm_state.engine_fire ? "ON" : "OFF",
+        g_alarm_state.stall_warning ? "ON" : "OFF",
+        g_alarm_state.overspeed_warning ? "ON" : "OFF",
+        g_alarm_state.audio_ready ? "READY" : "OFF"
+    );
+    render_text(g_renderer, g_font16, g_window_width / 2 - 210, 82, (SDL_Color){240, 240, 240, 255}, status_line);
+}
+
 static void draw_frame(void) {
     int i;
     SDL_Rect background_rect = {
@@ -392,6 +609,7 @@ static void draw_frame(void) {
 
     for (i = 0; i < MODULE_COUNT; ++i) draw_module_overlay(&g_modules[i]);
     draw_controls();
+    draw_alarm_panel();
 }
 
 static void capture_frame_if_requested(void) {
@@ -412,7 +630,7 @@ static void capture_frame_if_requested(void) {
 int main(int argc, char *argv[]) {
     SDL_Event event;
     Uint32 start_ticks = 0;
-    Uint32 capture_delay = 1200;
+    Uint32 capture_delay = 1000;
     int quit = 0;
     int i;
 
@@ -482,6 +700,7 @@ int main(int argc, char *argv[]) {
 
         attach_modules_if_ready();
         reposition_all_modules();
+        update_alarm_state();
         draw_frame();
         if (getenv("COCKPIT_CAPTURE_PATH") != NULL && SDL_GetTicks() - start_ticks > capture_delay) capture_frame_if_requested();
         SDL_RenderPresent(g_renderer);

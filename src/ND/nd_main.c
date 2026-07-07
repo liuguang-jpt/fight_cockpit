@@ -39,6 +39,7 @@ int main(int argc, char *argv[]) {
     HANDLE data_thread = NULL;
     NDThreadContext thread_ctx;
     NDData initial_data;
+    Uint32 start_ticks = 0;
     int quit = 0;
 
     (void)argc;
@@ -76,11 +77,13 @@ int main(int argc, char *argv[]) {
             fclose(bootstrap);
         }
     }
+    nd_apply_fmc_route(&initial_data);
 
     g_shared_nd_data = initial_data;
     sync_globals_from_nd_data(&g_shared_nd_data);
     data_thread = CreateThread(NULL, 0, nd_data_thread_proc, &thread_ctx, 0, NULL);
     update_render_rect(nd_window_width, nd_window_height);
+    start_ticks = SDL_GetTicks();
 
     while (!quit) {
         while (SDL_PollEvent(&event)) {
@@ -112,10 +115,10 @@ int main(int argc, char *argv[]) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         SDL_RenderCopy(renderer, nd_logic_texture, NULL, &nd_render_rect);
-        capture_frame_if_requested(renderer);
+        if (getenv("ND_CAPTURE_PATH") != NULL && SDL_GetTicks() - start_ticks > 1000) capture_frame_if_requested(renderer);
         SDL_RenderPresent(renderer);
 
-        if (getenv("ND_CAPTURE_PATH") != NULL) quit = 1;
+        if (getenv("ND_CAPTURE_PATH") != NULL && SDL_GetTicks() - start_ticks > 1000) quit = 1;
         SDL_Delay(16);
     }
 

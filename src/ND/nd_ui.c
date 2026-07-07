@@ -274,6 +274,7 @@ void drawNDMapMode(SDL_Renderer *renderer) {
 void drawNDStatus(SDL_Renderer *renderer) {
     const char *source = "STATIC";
     const char *status = nd_xplane_connected ? "UDP OK" : "SIM";
+    const char *route_status = nd_fmc_link_active ? "FMC LINK" : "LOCAL RTE";
 
     if (nd_data_source == ND_SOURCE_FILE) source = "FILE";
     else if (nd_data_source == ND_SOURCE_XPLANE) source = "XPLANE";
@@ -281,4 +282,5 @@ void drawNDStatus(SDL_Renderer *renderer) {
     render_text(renderer, 632, 28, "SOURCE", nd_font12, ND_WHITE);
     render_text(renderer, 632, 47, source, nd_font16, ND_GREEN);
     render_text(renderer, 632, 69, status, nd_font12, nd_xplane_connected ? ND_GREEN : ND_AMBER);
+    render_text(renderer, 632, 90, route_status, nd_font12, nd_fmc_link_active ? ND_MAGENTA : ND_WHITE);
 }

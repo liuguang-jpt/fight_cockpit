@@ -1,4 +1,5 @@
 #include "fmc_data.h"
+#include "../Util/fmc_nd_link.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -256,6 +257,20 @@ static void set_status(const char *message) {
     snprintf(fmc_status_message, sizeof(fmc_status_message), "%s", message);
 }
 
+static void publish_route_to_nd(void) {
+    FmcNdLinkRouteItem shared_route[FMC_ROUTE_CAPACITY];
+    size_t i;
+
+    for (i = 0; i < fmc_route_count && i < FMC_ROUTE_CAPACITY; ++i) {
+        memset(&shared_route[i], 0, sizeof(shared_route[i]));
+        snprintf(shared_route[i].name, sizeof(shared_route[i].name), "%s", fmc_route[i].name);
+        shared_route[i].latitude = fmc_route[i].latitude;
+        shared_route[i].longitude = fmc_route[i].longitude;
+        snprintf(shared_route[i].kind, sizeof(shared_route[i].kind), "%s", fmc_route[i].kind);
+    }
+    fmc_nd_link_publish(fmc_origin, fmc_destination, shared_route, fmc_route_count);
+}
+
 static void populate_procedure_options(void) {
     const char *origin = strcmp(fmc_origin, "----") == 0 ? "ORIG" : fmc_origin;
     const char *destination = strcmp(fmc_destination, "----") == 0 ? "DEST" : fmc_destination;
@@ -335,6 +350,7 @@ void fmc_init_state(void) {
     fmc_descent_data.vref = 140;
     set_status("READY");
     populate_procedure_options();
+    publish_route_to_nd();
 }
 
 int fmc_load_navigation_data(const char *apt_path, const char *fix_path, const char *fms_path) {
@@ -355,6 +371,7 @@ int fmc_load_navigation_data(const char *apt_path, const char *fix_path, const c
     ok &= load_fms_demo(route_path);
     populate_procedure_options();
     set_status(ok ? "NAV DATA LOADED" : "NAV LOAD FAILED");
+    publish_route_to_nd();
     return ok;
 }
 
@@ -363,6 +380,7 @@ void fmc_free_navigation_data(void) {
     free_fix_tree(g_fix_root);
     g_airport_root = NULL;
     g_fix_root = NULL;
+    fmc_nd_link_shutdown();
 }
 
 const FMCAirportRecord *fmc_find_airport(const char *code) {
@@ -408,6 +426,7 @@ int fmc_commit_exec(void) {
     fmc_exec_armed = 0;
     populate_procedure_options();
     set_status("ROUTE ACTIVATED");
+    publish_route_to_nd();
     return 1;
 }
 
@@ -426,6 +445,7 @@ int fmc_append_route_waypoint(const char *name) {
         }
         set_route_entry(fmc_route_count++, airport->code, airport->latitude, airport->longitude, "APT");
         set_status("AIRPORT ADDED");
+        publish_route_to_nd();
         return 1;
     }
 
@@ -435,6 +455,7 @@ int fmc_append_route_waypoint(const char *name) {
     }
     set_route_entry(fmc_route_count++, fix->name, fix->latitude, fix->longitude, "FIX");
     set_status("WAYPOINT ADDED");
+    publish_route_to_nd();
     return 1;
 }
 

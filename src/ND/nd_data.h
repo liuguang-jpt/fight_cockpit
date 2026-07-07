@@ -40,6 +40,7 @@ typedef struct NDData {
     NDRoutePoint route_points[ND_ROUTE_POINT_COUNT];
     NDDataSource source;
     int xplane_connected;
+    int fmc_link_active;
 } NDData;
 
 typedef struct NDThreadContext {
@@ -63,10 +64,12 @@ extern float nd_latitude_deg;
 extern float nd_longitude_deg;
 extern NDRoutePoint nd_route_points[ND_ROUTE_POINT_COUNT];
 extern int nd_xplane_connected;
+extern int nd_fmc_link_active;
 extern NDDataSource nd_data_source;
 
 void init_nd_defaults(NDData *data);
 void sync_globals_from_nd_data(const NDData *data);
+void nd_apply_fmc_route(NDData *data);
 FILE *open_nd_data_file(const char *path);
 int read_nd_data(FILE *file, NDData *data);
 int load_next_nd_frame(FILE *file, NDData *data);

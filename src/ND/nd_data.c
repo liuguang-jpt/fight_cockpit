@@ -1,4 +1,5 @@
 #include "nd_data.h"
+#include "../Util/fmc_nd_link.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -15,6 +16,7 @@ int nd_wind_direction = 0, nd_wind_speed = 25;
 float nd_latitude_deg = 31.8f, nd_longitude_deg = 117.2f;
 NDRoutePoint nd_route_points[ND_ROUTE_POINT_COUNT];
 int nd_xplane_connected = 0;
+int nd_fmc_link_active = 0;
 NDDataSource nd_data_source = ND_SOURCE_STATIC;
 
 static int clamp_int(int value, int min_value, int max_value) {
@@ -33,6 +35,35 @@ static int round_to_int(float value) {
     return (int)(value >= 0.0f ? value + 0.5f : value - 0.5f);
 }
 
+static float degrees_to_radians(float degrees) {
+    return degrees * 0.01745329252f;
+}
+
+static float calculate_bearing_deg(float lat1, float lon1, float lat2, float lon2) {
+    float phi1 = degrees_to_radians(lat1);
+    float phi2 = degrees_to_radians(lat2);
+    float delta_lambda = degrees_to_radians(lon2 - lon1);
+    float y = sinf(delta_lambda) * cosf(phi2);
+    float x = cosf(phi1) * sinf(phi2) - sinf(phi1) * cosf(phi2) * cosf(delta_lambda);
+    float bearing = atan2f(y, x) * 57.2957795f;
+
+    if (bearing < 0.0f) bearing += 360.0f;
+    return bearing;
+}
+
+static float calculate_distance_nm(float lat1, float lon1, float lat2, float lon2) {
+    float dlat = degrees_to_radians(lat2 - lat1);
+    float dlon = degrees_to_radians(lon2 - lon1);
+    float phi1 = degrees_to_radians(lat1);
+    float phi2 = degrees_to_radians(lat2);
+    float sin_dlat = sinf(dlat * 0.5f);
+    float sin_dlon = sinf(dlon * 0.5f);
+    float a = sin_dlat * sin_dlat + cosf(phi1) * cosf(phi2) * sin_dlon * sin_dlon;
+    float c = 2.0f * atan2f(sqrtf(a), sqrtf(1.0f - a));
+
+    return 3440.065f * c;
+}
+
 static void assign_default_route(NDData *data) {
     static const NDRoutePoint defaults[ND_ROUTE_POINT_COUNT] = {
         {"TOC", 315.0f, 14.0f, 1}, {"B221", 338.0f, 29.0f, 1},
@@ -40,6 +71,56 @@ static void assign_default_route(NDData *data) {
         {"VOR1", 294.0f, 38.0f, 1}, {"APT", 22.0f, 76.0f, 1}
     };
     memcpy(data->route_points, defaults, sizeof(defaults));
+}
+
+/* ND only renders a handful of waypoints, so the FMC route is projected into the visible 6-point window here. */
+void nd_apply_fmc_route(NDData *data) {
+    FmcNdSharedRoute shared_route;
+    size_t start_index = 0;
+    size_t i;
+
+    if (data == NULL) return;
+    if (!fmc_nd_link_read(&shared_route) || shared_route.route_count == 0) {
+        data->fmc_link_active = 0;
+        return;
+    }
+
+    data->fmc_link_active = 1;
+    if (data->source != ND_SOURCE_XPLANE && shared_route.route_count > 0) {
+        data->latitude_deg = (float)shared_route.route[0].latitude;
+        data->longitude_deg = (float)shared_route.route[0].longitude;
+        if (shared_route.route_count > 1) {
+            int route_heading = normalize_heading(round_to_int(calculate_bearing_deg(
+                data->latitude_deg,
+                data->longitude_deg,
+                (float)shared_route.route[1].latitude,
+                (float)shared_route.route[1].longitude
+            )));
+            data->current_heading = route_heading;
+            data->current_track = route_heading;
+        }
+    }
+
+    memset(data->route_points, 0, sizeof(data->route_points));
+    start_index = shared_route.route_count > 1 ? 1 : 0;
+    for (i = 0; i < ND_ROUTE_POINT_COUNT && start_index + i < shared_route.route_count; ++i) {
+        FmcNdLinkRouteItem *item = &shared_route.route[start_index + i];
+
+        snprintf(data->route_points[i].name, sizeof(data->route_points[i].name), "%s", item->name);
+        data->route_points[i].bearing_deg = calculate_bearing_deg(
+            data->latitude_deg,
+            data->longitude_deg,
+            (float)item->latitude,
+            (float)item->longitude
+        );
+        data->route_points[i].distance_nm = calculate_distance_nm(
+            data->latitude_deg,
+            data->longitude_deg,
+            (float)item->latitude,
+            (float)item->longitude
+        );
+        data->route_points[i].is_active = 1;
+    }
 }
 
 void init_nd_defaults(NDData *data) {
@@ -54,6 +135,7 @@ void init_nd_defaults(NDData *data) {
     data->longitude_deg = 117.2f;
     data->source = ND_SOURCE_STATIC;
     data->xplane_connected = 0;
+    data->fmc_link_active = 0;
     assign_default_route(data);
 }
 
@@ -69,6 +151,7 @@ void sync_globals_from_nd_data(const NDData *data) {
     nd_longitude_deg = data->longitude_deg;
     memcpy(nd_route_points, data->route_points, sizeof(nd_route_points));
     nd_xplane_connected = data->xplane_connected;
+    nd_fmc_link_active = data->fmc_link_active;
     nd_data_source = data->source;
 }
 
@@ -97,7 +180,9 @@ int read_nd_data(FILE *file, NDData *data) {
     data->longitude_deg = 117.2f + cosf((float)data->current_track * 0.0174533f) * 0.15f;
     data->source = ND_SOURCE_FILE;
     data->xplane_connected = 0;
+    data->fmc_link_active = 0;
     assign_default_route(data);
+    nd_apply_fmc_route(data);
     return 1;
 }
 
@@ -162,7 +247,9 @@ int getNDData(XPCSocket sock, NDData *data) {
     data->longitude_deg = longitude;
     data->source = ND_SOURCE_XPLANE;
     data->xplane_connected = 1;
+    data->fmc_link_active = 0;
     assign_default_route(data);
+    nd_apply_fmc_route(data);
     return 0;
 }
 
@@ -190,6 +277,8 @@ DWORD WINAPI nd_data_thread_proc(LPVOID param) {
             } else if (ctx->mode == ND_MODE_XPLANE) {
                 local_data.source = ND_SOURCE_STATIC;
                 local_data.xplane_connected = 0;
+                local_data.fmc_link_active = 0;
+                nd_apply_fmc_route(&local_data);
                 Sleep(250);
                 has_update = 1;
             }
@@ -217,6 +306,9 @@ DWORD WINAPI nd_data_thread_proc(LPVOID param) {
         if (!has_update) {
             local_data.source = ND_SOURCE_STATIC;
             local_data.xplane_connected = 0;
+            local_data.fmc_link_active = 0;
+            assign_default_route(&local_data);
+            nd_apply_fmc_route(&local_data);
             Sleep(100);
             has_update = 1;
         }
@@ -230,6 +322,7 @@ DWORD WINAPI nd_data_thread_proc(LPVOID param) {
 
     if (file != NULL) fclose(file);
     if (sock.sock != INVALID_SOCKET) closeUDP(sock);
+    fmc_nd_link_shutdown();
     InterlockedExchange(&g_nd_thread_running, 0);
     return 0;
 }
