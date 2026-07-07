@@ -223,12 +223,57 @@
             }
         },
         {
-            "label": "build cockpit",
+            "label": "build map",
             "type": "shell",
             "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
             "args": [
                 "-g",
                 "${workspaceFolder}/src/MAP/map_main.c",
+                "${workspaceFolder}/src/MAP/map_ui.c",
+                "${workspaceFolder}/src/MAP/map_data.c",
+                "${workspaceFolder}/src/Util/xplaneConnect.c",
+                "-o",
+                "${workspaceFolder}/build/map.exe",
+                "-I${workspaceFolder}/src",
+                "-I${workspaceFolder}/src/MAP",
+                "-I${workspaceFolder}/src/Util",
+                "-ID:/gcc/msys64/mingw64/include",
+                "-ID:/gcc/msys64/mingw64/include/SDL2",
+                "-LD:/gcc/msys64/mingw64/lib",
+                "-lmingw32",
+                "-lSDL2main",
+                "-lSDL2",
+                "-lSDL2_ttf",
+                "-lSDL2_image",
+                "-lcurl",
+                "-lcjson",
+                "-lws2_32",
+                "-lm"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "run map",
+            "type": "shell",
+            "dependsOn": [
+                "build map"
+            ],
+            "command": "${workspaceFolder}/build/map.exe",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "build cockpit",
+            "type": "shell",
+            "command": "D:/gcc/msys64/mingw64/bin/gcc.exe",
+            "args": [
+                "-g",
+                "${workspaceFolder}/src/MAP/cockpit_main.c",
                 "-o",
                 "${workspaceFolder}/build/cockpit.exe",
                 "-I${workspaceFolder}/src",
